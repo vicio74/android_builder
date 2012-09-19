@@ -18,9 +18,11 @@ ADDITIONAL="$2"
 TOP=${PWD}
 
 #######################################################################################
-ANDROID_ROOT=~/android/system
-OUT=$ANDROID_ROOT/out/target/product/pascal2
-PRODUCT_DIR=$ANDROID_ROOT/out/target/product/pascal2
+#ANDROID_ROOT=~/android/system
+ANDROID_ROOT=$TOP
+OUT=$ANDROID_ROOT/out/target/product/mp850i
+PRODUCT_DIR=$ANDROID_ROOT/out/target/product/mp850i
+DEVICE_DIR=$ANDROID_ROOT/device/mediacom/mp850i
 #######################################################################################
 
 # do not change this var 
@@ -57,8 +59,8 @@ mkimg_boot()
 	pushd $OUT/root/
 	find . | cpio -o -H newc | gzip -n > ../boot.gz
 	popd
-	cd $OUT/rktools
-        ./rkcrc -k $OUT/boot.gz $OUT/boot.img
+#	cd $OUT/rktools
+  rkcrc -k $OUT/boot.gz $OUT/boot.img
 	cd ..
 	cp $OUT/boot.img $PRODUCT_IMAGES
 	cd $ANDROID_ROOT
@@ -80,8 +82,8 @@ mkimg_system()
 	echo "alloc disk space..."
 	dd if=/dev/zero of=$SYSTEMIMG bs=1024 count=${SYSTEMIMG_SIZE}
 	#mke2fs -F -m 0 -i 2000 $SYSTEMIMG > /dev/null
-	/sbin/mkfs.ext3 -F $SYSTEMIMG > /dev/null
-	sudo mount -t ext3 -o loop $SYSTEMIMG $PRODUCT_IMAGES/system/
+	/sbin/mkfs.ext4 -F $SYSTEMIMG > /dev/null
+	sudo mount -t ext4 -o loop $SYSTEMIMG $PRODUCT_IMAGES/system/
 
 	cd $OUT
 	sudo cp -rv system images
@@ -97,16 +99,50 @@ mkimg_recovery()
 {
 	echo "****************  start make recovery.img ****************"
 	cd $OUT
+	mkdir images
 	rm recovery.img
 	pushd $OUT/recovery/root/
 	find . | cpio -o -H newc | gzip -n > ../../recovery.gz
 	popd
-        cd $OUT/rktools
-	./rkcrc -k $OUT/recovery.gz $OUT/recovery.img
+#        cd $OUT/rktools
+	rkcrc -k $OUT/recovery.gz $OUT/recovery.img
 	cd ..
-	cp $OUT/recovery.img $PRODUCT_IMAGES
+	cp $OUT/recovery.img $PRODUCT_IMAGES/
 	
 	echo "make recovery.img ok!"
+}
+
+######################################################################################
+mkimg_recovery_repack()
+{
+	echo "****************  start pack recovery images ****************"
+	cd $OUT
+
+	echo "****************  pack ext3"
+  cp $DEVICE_DIR/recovery.fstab.ext3 $OUT/recovery/root/etc/recovery.fstab
+	pushd $OUT/recovery/root/
+	find . | cpio -o -H newc | gzip -n > ../../recovery.gz
+	popd
+#  cd $OUT/rktools
+	rkcrc -k $OUT/recovery.gz $OUT/recovery_ext3.img
+  abootimg --create $OUT/recoveryk_ext3.img -f $DEVICE_DIR/recoveryimg.cfg -k $OUT/kernel -r $OUT/recovery.gz
+	cd ..
+	cp $OUT/recovery_ext3.img $PRODUCT_IMAGES
+	cp $OUT/recoveryk_ext3.img $PRODUCT_IMAGES
+
+	echo "****************  pack ext4"
+  cp $DEVICE_DIR/recovery.fstab.ext4 $OUT/recovery/root/etc/recovery.fstab
+	pushd $OUT/recovery/root/
+	find . | cpio -o -H newc | gzip -n > ../../recovery.gz
+	popd
+#  cd $OUT/rktools
+	rkcrc -k $OUT/recovery.gz $OUT/recovery_ext4.img
+  abootimg --create $OUT/recoveryk_ext4.img -f $DEVICE_DIR/recoveryimg.cfg -k $OUT/kernel -r $OUT/recovery.gz
+	cd ..
+	cp $OUT/recovery_ext4.img $PRODUCT_IMAGES
+	cp $OUT/recoveryk_ext4.img $PRODUCT_IMAGES
+	
+	echo "make recovery imgages ok!"
 }
 
 ######################################################################################
@@ -156,14 +192,14 @@ case "$COMMAND" in
 		rm -rf ./out/target/product
 		exit
 		;;
-	pascal2)
-	   	lunch=cm_pascal2-userdebug
+	mp850i)
+	   	lunch=cm_mp850i-userdebug
 	    	;;
 	*)
 		echo -e "${txtred}Usage: $0 DEVICE ADDITIONAL"
-		echo -e "Example: ./builder.sh pascal2"
-		echo -e "Supported Devices: pascal2${txtrst}"
-		echo -e "Additional , build images of system,boot,..../builder.sh pascal2 img"
+		echo -e "Example: ./builder.sh mp850i"
+		echo -e "Supported Devices: mp850i${txtrst}"
+		echo -e "Additional , build images of system,boot,..../builder.sh mp850i img"
 		exit 2
 		;;
 esac
@@ -210,6 +246,14 @@ case "$ADDITIONAL" in
 	img_sys)
 		echo -e "${txtgrn} Create images...${txtrst}"	
        		mkimg_system
+		;;
+	recovery)
+		echo -e "${txtgrn} Create recovery...${txtrst}"	
+		mkimg_recovery
+		;;
+  recovery_repack)
+		echo -e "${txtgrn} Pack recovery images...${txtrst}"	
+		mkimg_recovery_repack
 		;;
 	*)
 		echo -e "${txtgrn}Building Android...${txtrst}"
